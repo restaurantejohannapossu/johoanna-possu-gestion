@@ -89,17 +89,17 @@ export function ModalCobro({ abierto, pedido, onCerrar, onPagado }) {
 
 /** Tras cobrar: imprimir comprobante o enviarlo por WhatsApp */
 export async function textoComprobante(pedidoId) {
-  const [p, items, emp] = await Promise.all([
-    q((sb) => sb.from('pedidos').select('numero, comprobante_numero, total, descuento, valor_domicilio, cerrado_en').eq('id', pedidoId).single()),
+  const [p, items] = await Promise.all([
+    q((sb) => sb.from('pedidos').select('numero, comprobante_numero, total, descuento, valor_domicilio, cerrado_en, sedes(negocios(nombre, direccion, whatsapp, mensaje_comprobante))').eq('id', pedidoId).single()),
     q((sb) => sb.from('pedido_items').select('nombre, cantidad, total').eq('pedido_id', pedidoId).eq('estado', 'activo')),
-    q((sb) => sb.from('config_empresa').select('nombre, direccion, whatsapp, mensaje_comprobante').eq('id', 1).single()),
   ]);
+  const emp = p.sedes?.negocios || {};
   return [
     `*${emp.nombre}*`, emp.direccion, `Comprobante de venta #${p.comprobante_numero} (pedido #${p.numero})`, '',
     ...items.map((i) => `${Number(i.cantidad)} x ${i.nombre} — ${moneda(i.total)}`),
     Number(p.descuento) > 0 ? `Descuento: -${moneda(p.descuento)}` : null,
     Number(p.valor_domicilio) > 0 ? `Domicilio: ${moneda(p.valor_domicilio)}` : null,
-    `*TOTAL: ${moneda(p.total)}*`, '', emp.mensaje_comprobante, `WhatsApp: ${emp.whatsapp}`,
+    `*TOTAL: ${moneda(p.total)}*`, '', emp.mensaje_comprobante, emp.whatsapp ? `WhatsApp: ${emp.whatsapp}` : null,
     '_Comprobante interno de venta — no es factura electrónica._',
   ].filter((x) => x !== null).join('\n');
 }

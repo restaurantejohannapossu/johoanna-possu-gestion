@@ -70,7 +70,7 @@ export default function DetallePedido({ pedidoId, onCerrar, onCambio }) {
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2 text-sm">
               <Estado valor={p.estado} /> <Estado valor={p.estado_pago} />
-              <Chip>{etiqueta(p.tipo_servicio)}{p.mesas?.nombre ? ` · ${p.mesas.nombre}` : ''}</Chip>
+              <Chip>{etiqueta(p.tipo_servicio)}{p.mesas?.nombre ? ` · ${p.mesas.nombre}` : ''}{p.nombre_cuenta ? ` · ${p.nombre_cuenta}` : ''}</Chip>
               <span className="text-cafe-400">{fechaHora(p.creado_en)} · {p.perfiles?.nombre}</span>
             </div>
             {p.clientes && <p className="text-sm">Cliente: <b>{p.clientes.nombre}</b> {p.clientes.telefono}</p>}

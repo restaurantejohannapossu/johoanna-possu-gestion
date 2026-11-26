@@ -1,6 +1,28 @@
-# Restaurante Johoanna Possu · Sistema integral de gestión
+# Negocios Johoanna Possu · Sistema integral de gestión
 
-Plataforma web para administrar el restaurante desde un solo lugar: punto de venta, mesas, cocina, domicilios, inventario con recetas, compras, caja, gastos, comprobantes, transferencias entre sedes, reportes y auditoría. Funciona en computador, tableta y celular.
+**Restaurante Johoanna Possu · Variedades Johanna · Tienda Johoanna**: un solo sistema, con cada negocio totalmente separado (catálogo, inventario, cajas, dinero y ventas), su propio aspecto y su propio NIT.
+
+## 0. Multinegocio (versión 2)
+- **Panel general** al iniciar sesión: resumen de los 3 negocios (ventas, gastos, ganancia, caja, cuentas abiertas, inventario) sin mezclarlos, más un gráfico comparativo.
+- **Configuración general:** negocios (nombre, logo, colores y módulos de cada uno), métodos de pago, impuestos, categorías de gastos y seguridad.
+- **Cada negocio** tiene su tema de colores, su logo, sus datos de comprobante (NIT, dirección, WhatsApp) y solo los módulos que usa:
+  - Restaurante: mesas, cocina, recetas, domicilios.
+  - Variedades Johanna: **tallas y colores** (cada combinación con su inventario y su código de barras) y **apartados**.
+  - Tienda: **presentaciones** (unidad, six pack, paca, canasta; al vender una canasta se descuentan 30 unidades) y **cuentas abiertas** que se pagan al final.
+- **Lector de código de barras (pistola USB o Bluetooth):** funciona en el punto de venta (aunque el cursor no esté en el buscador), en compras y en inventario. Los productos sin código pueden **generar uno** e **imprimir etiquetas** (rollo de 50 × 25 mm, 40 × 30 mm u hoja carta).
+- La separación la garantiza la **base de datos** (Row Level Security): un cajero de la tienda no puede ver ni vender productos del restaurante.
+
+### Actualizar una instalación existente a la versión 2
+1. **Supabase → SQL Editor:** ejecutar **solo** `supabase/migrations/008_multinegocio.sql`. No borra nada: todo lo que ya existía queda en el Restaurante, y se crean Variedades Johanna y la Tienda, cada una con su sede y su caja.
+2. **GitHub:** subir de nuevo los archivos del proyecto (**Add file → Upload files**), incluida la carpeta `public` (logos). Los archivos con el mismo nombre se reemplazan.
+3. **Vercel** publica la nueva versión automáticamente después del *commit*.
+4. Para asignar personal a un negocio: **Usuarios** → editar → marcar la sede de ese negocio. Así una cajera de la tienda solo ve la tienda.
+
+**Lectores de código de barras:** sirve cualquier lector USB o Bluetooth que funcione "como teclado" (HID); casi todos lo hacen. Debe estar configurado para enviar **Enter** al final de cada lectura, que es lo que traen de fábrica. Si van a imprimir etiquetas: impresora térmica de etiquetas, por ejemplo con rollos de 50 × 25 mm.
+
+---
+
+Plataforma web para administrar los negocios desde un solo lugar: punto de venta, mesas, cocina, domicilios, inventario con recetas, compras, caja, gastos, comprobantes, transferencias entre sedes, reportes y auditoría. Funciona en computador, tableta y celular.
 
 **Tecnología:** Next.js 16 · Supabase (PostgreSQL + autenticación + archivos) · Vercel
 Desarrollado por **Bryan Possu**.
@@ -54,7 +76,8 @@ En Supabase, abre **SQL Editor** y ejecuta los archivos de `supabase/migrations/
 4. `004_reportes.sql`
 5. `005_datos_iniciales.sql` (permisos, roles, unidades, categorías, métodos de pago, sede principal con 8 mesas)
 6. `006_almacenamiento.sql` (espacios para el logo, las fotos y los soportes)
-7. *(Opcional)* `007_datos_demo_OPCIONAL.sql`: carga productos, insumos y recetas de ejemplo marcados **DEMO**, para practicar. Después se eliminan desde **Configuración → Datos de demostración**.
+7. *(Opcional)* `007_datos_demo_OPCIONAL.sql`: carga productos, insumos y recetas de ejemplo del restaurante marcados **DEMO**, para practicar. Después se eliminan desde **Configuración del negocio → Datos de demostración**.
+8. `008_multinegocio.sql` (los 3 negocios, códigos de barras, tallas y colores, presentaciones y cuentas abiertas)
 
 > La carpeta `supabase/pruebas/` es solo para pruebas locales. **No** se ejecuta en Supabase.
 

@@ -11,7 +11,7 @@ import { moneda, fecha } from '@/lib/formato';
 export default function Pagina() { return <Requiere permisos={['clientes.ver']}><Clientes /></Requiere>; }
 
 function Clientes() {
-  const { puede } = useSesion();
+  const { puede, negocio } = useSesion();
   const [hist, setHist] = useState(null);
   return (
     <div>
@@ -33,7 +33,7 @@ function Clientes() {
           { clave: 'preferencias', titulo: 'Preferencias', className: 'max-w-xs truncate' },
         ]}
         acciones={(f) => <>
-          {(f.whatsapp || f.telefono) && <button className="btn-secundario btn-sm" onClick={() => abrirWhatsApp(f.whatsapp || f.telefono, `Hola ${f.nombre}, te saludamos del Restaurante Johoanna Possu.`)}><MessageCircle size={13} /></button>}
+          {(f.whatsapp || f.telefono) && <button className="btn-secundario btn-sm" onClick={() => abrirWhatsApp(f.whatsapp || f.telefono, `Hola ${f.nombre}, te saludamos de ${negocio?.nombre || ''}.`)}><MessageCircle size={13} /></button>}
           <button className="btn-secundario btn-sm" onClick={() => setHist(f)} title="Historial"><History size={13} /></button>
         </>} />
       {hist && <Historial cliente={hist} onCerrar={() => setHist(null)} />}

@@ -35,8 +35,8 @@ export default function Login() {
       }
       const { error: e3 } = await sb.rpc('registrar_inicio_sesion');
       if (e3) { await sb.auth.signOut(); throw e3; }
-      router.replace('/');
-      router.refresh();
+      try { localStorage.removeItem('negocio_activo'); localStorage.removeItem('sede_activa'); } catch { /* */ }
+      window.location.href = '/';
     } catch (err) {
       setError(mensajeError(err));
     } finally {

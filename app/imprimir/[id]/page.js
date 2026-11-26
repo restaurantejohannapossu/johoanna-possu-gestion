@@ -18,13 +18,14 @@ function Comprobante() {
   useEffect(() => {
     (async () => {
       try {
-        const [p, items, pagos, emp, devs] = await Promise.all([
-          q((sb) => sb.from('pedidos').select('*, sedes(nombre,direccion,telefono,whatsapp), clientes(nombre,documento,telefono,direccion), mesas(nombre), domicilios(*), perfiles!pedidos_usuario_id_fkey(nombre)').eq('id', id).single()),
+        const [p, items, pagos, devs] = await Promise.all([
+          q((sb) => sb.from('pedidos').select('*, sedes(nombre,direccion,telefono,whatsapp,negocios(*)), clientes(nombre,documento,telefono,direccion), mesas(nombre), domicilios(*), perfiles!pedidos_usuario_id_fkey(nombre)').eq('id', id).single()),
           q((sb) => sb.from('pedido_items').select('*').eq('pedido_id', id).eq('estado', 'activo').order('creado_en')),
           q((sb) => sb.from('pagos').select('valor, recibido, cambio, referencia, metodos_pago(nombre)').eq('pedido_id', id).order('creado_en')),
-          q((sb) => sb.from('config_empresa').select('*').eq('id', 1).single()),
           q((sb) => sb.from('devoluciones').select('valor, motivo, es_anulacion').eq('pedido_id', id)),
         ]);
+        const emp = p.sedes?.negocios || {};
+        document.documentElement.dataset.tema = emp.tema || 'restaurante';
         setD({ p, items, pagos, emp, devs });
         setFormato((f) => f || emp.impresion?.formato || '80mm');
       } catch (e) { setError(mensajeError(e)); }
@@ -69,11 +70,11 @@ function Comprobante() {
 
         <div className={`my-2 ${termico ? 'border-y border-dashed border-black py-1' : 'mt-5 grid grid-cols-2 gap-1'}`}>
           <p className="font-bold">COMPROBANTE INTERNO DE VENTA N.º {p.comprobante_numero ?? '— (pendiente de pago)'}</p>
-          <p>Pedido #{p.numero} · {etiqueta(p.tipo_servicio)}{p.mesas?.nombre ? ` · ${p.mesas.nombre}` : ''}</p>
+          <p>Pedido #{p.numero} · {etiqueta(p.tipo_servicio)}{p.mesas?.nombre ? ` · ${p.mesas.nombre}` : ''}{p.nombre_cuenta ? ` · ${p.nombre_cuenta}` : ''}</p>
           <p>Fecha: {fechaHora(p.cerrado_en || p.creado_en)}</p>
           <p>Sede: {p.sedes?.nombre}</p>
           <p>Atendió: {p.perfiles?.nombre || '—'}</p>
-          <p>Cliente: {p.clientes?.nombre || p.domicilios?.cliente_nombre || 'Cliente general'}{p.clientes?.documento ? ` · ${p.clientes.documento}` : ''}</p>
+          <p>Cliente: {p.clientes?.nombre || p.domicilios?.cliente_nombre || p.nombre_cuenta || 'Cliente general'}{p.clientes?.documento ? ` · ${p.clientes.documento}` : ''}</p>
           {p.domicilios && <p>Entrega: {p.domicilios.direccion}{p.domicilios.barrio ? `, ${p.domicilios.barrio}` : ''}</p>}
         </div>
 
@@ -106,7 +107,7 @@ function Comprobante() {
 
         <div className={`mt-3 text-center ${termico ? 'border-t border-dashed border-black pt-2' : 'mt-8 border-t border-crema-200 pt-4'}`}>
           <p className="font-bold">{emp.mensaje_comprobante}</p>
-          <p className="mt-1">Pedidos y domicilios por WhatsApp: {emp.whatsapp}</p>
+          {emp.whatsapp && <p className="mt-1">Pedidos y domicilios por WhatsApp: {emp.whatsapp}</p>}
           <p className="mt-2 text-[10px]">Documento interno de venta. No es una factura electrónica de venta.</p>
         </div>
       </div>

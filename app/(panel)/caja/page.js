@@ -36,7 +36,7 @@ function MiCaja({ sedeId }) {
   useEffect(() => { supabase().auth.getUser().then(({ data }) => setUid(data.user?.id)); }, []);
   const { datos: sesion, cargando, recargar } = useCarga(async () => {
     if (!uid || !sedeId) return null;
-    return q((sb) => sb.from('caja_sesiones').select('*, cajas(nombre)').eq('usuario_id', uid).eq('estado', 'abierta').maybeSingle());
+    return q((sb) => sb.from('caja_sesiones').select('*, cajas(nombre)').eq('usuario_id', uid).eq('sede_id', sedeId).eq('estado', 'abierta').maybeSingle());
   }, [uid, sedeId]);
   if (cargando || !uid) return <Cargando />;
   if (!sesion) return <AbrirCaja sedeId={sedeId} onAbierta={recargar} />;

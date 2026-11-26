@@ -1,15 +1,14 @@
 'use client';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, Plus, Minus, Trash2, Send, Wallet, StickyNote, Percent, X, AlertTriangle, PackagePlus } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, Send, Wallet, StickyNote, Percent, X, AlertTriangle, PackagePlus, ScanBarcode, Users } from 'lucide-react';
 import { useSesion, Requiere } from '@/components/sesion';
 import { Cargando, Modal, Campo, Chip, useAviso, useConfirmar } from '@/components/ui';
 import { ModalCobro, ModalVentaLista, SelectorCliente, useCajaAbierta } from '@/components/Cobro';
 import { q, rpc } from '@/lib/supabase';
 import { moneda, etiqueta } from '@/lib/formato';
 
-const TIPOS = ['mostrador', 'mesa', 'llevar', 'recoger', 'domicilio'];
 
 export default function PaginaPOS() {
   return <Requiere permisos={['pos.vender']}><Suspense fallback={<Cargando />}><POS /></Suspense></Requiere>;
@@ -27,7 +26,12 @@ function disponibleAhora(ps) {
 }
 
 function POS() {
-  const { sedeId, puede } = useSesion();
+  const { sedeId, puede, negocio, usaModulo } = useSesion();
+  const TIPOS = [
+    'mostrador', usaModulo('mesas') && 'mesa', negocio?.tipo === 'restaurante' && 'llevar', negocio?.tipo === 'restaurante' && 'recoger',
+    usaModulo('cuentas') && 'cuenta', usaModulo('domicilios') && 'domicilio',
+  ].filter(Boolean);
+  const nombreTipo = (t) => (t === 'cuenta' ? (negocio?.tipo === 'ropa' ? 'Apartado' : 'Cuenta') : etiqueta(t));
   const aviso = useAviso();
   const confirmar = useConfirmar();
   const router = useRouter();
@@ -54,17 +58,22 @@ function POS() {
   const [cobro, setCobro] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [nombreCuenta, setNombreCuenta] = useState('');
+  const [elegir, setElegir] = useState(null);          // producto con tallas/colores o presentaciones
+  const [cuentas, setCuentas] = useState(null);         // lista de cuentas abiertas
+  const buscarRef = useRef(null);
 
   useEffect(() => {
     if (!sedeId) return;
     Promise.all([
-      q((sb) => sb.from('productos').select('id,codigo,nombre,precio,imagen_url,categoria_id,va_a_cocina,es_demo,impuestos(porcentaje,incluido_en_precio,activo),producto_sedes(sede_id,disponible,agotado,precio,hora_desde,hora_hasta,dias)').eq('activo', true).order('orden').order('nombre')),
+      q((sb) => sb.from('productos').select('id,codigo,codigo_barras,nombre,precio,imagen_url,categoria_id,va_a_cocina,es_demo,impuestos(porcentaje,incluido_en_precio,activo),producto_sedes(sede_id,disponible,agotado,precio,hora_desde,hora_hasta,dias),producto_opciones(id,tipo,nombre,talla,color,factor,precio,codigo_barras,insumo_id,activo,orden)').eq('activo', true).order('orden').order('nombre')),
       q((sb) => sb.from('categorias').select('id,nombre').eq('tipo', 'producto').eq('activa', true).order('orden')),
       q((sb) => sb.from('mesas').select('id,nombre,estado,zona').eq('sede_id', sedeId).eq('activa', true).order('orden')),
     ]).then(([p, c, m]) => {
       setProductos(p.map((x) => {
         const ps = x.producto_sedes.find((s) => s.sede_id === sedeId);
-        return { ...x, ps, precioSede: ps?.precio ?? x.precio, agotado: !!ps?.agotado, disponible: disponibleAhora(ps) };
+        const opciones = (x.producto_opciones || []).filter((o) => o.activo).sort((a, b) => a.orden - b.orden);
+        return { ...x, ps, opciones, precioSede: ps?.precio ?? x.precio, agotado: !!ps?.agotado, disponible: disponibleAhora(ps) };
       }).filter((x) => !x.ps || x.ps.disponible));
       setCategorias(c); setMesas(m);
     }).catch(aviso.error);
@@ -76,7 +85,7 @@ function POS() {
         q((sb) => sb.from('pedidos').select('*, clientes(id,nombre,telefono), domicilios(*), mesas(nombre)').eq('id', id).single()),
         q((sb) => sb.from('pedido_items').select('*').eq('pedido_id', id).eq('estado', 'activo').order('creado_en')),
       ]);
-      setPedido(p); setItemsPedido(items); setTipo(p.tipo_servicio); setMesaId(p.mesa_id || ''); setCliente(p.clientes || null);
+      setPedido(p); setItemsPedido(items); setTipo(p.tipo_servicio); setMesaId(p.mesa_id || ''); setCliente(p.clientes || null); setNombreCuenta(p.nombre_cuenta || '');
     } catch (e) { aviso.error(e); }
   }
   useEffect(() => {
@@ -87,17 +96,61 @@ function POS() {
 
   const visibles = useMemo(() => {
     const t = buscar.trim().toLowerCase();
-    return (productos || []).filter((p) => (!cat || p.categoria_id === cat) && (!t || p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t)));
+    return (productos || []).filter((p) => (!cat || p.categoria_id === cat) && (!t || p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t) || p.codigo_barras === buscar.trim()));
   }, [productos, cat, buscar]);
 
-  const agregar = (p) => {
-    if (p.agotado || !p.disponible) return;
+  /** Agrega al pedido. Si el producto tiene tallas/colores o presentaciones y no se indicó cuál, pregunta. */
+  const agregar = (p, opcion, preguntar = true) => {
+    if (p.agotado || !p.disponible) return aviso.error(`"${p.nombre}" no está disponible ahora.`);
+    if (!opcion && preguntar && p.opciones?.length) return setElegir(p);
+    const nombre = opcion ? `${p.nombre} · ${opcion.nombre}` : p.nombre;
+    const precio = opcion ? Number(opcion.precio ?? Number(p.precioSede) * Number(opcion.factor || 1)) : Number(p.precioSede);
     setCarrito((c) => {
-      const i = c.findIndex((l) => l.producto_id === p.id && !l.observaciones && !l.descuento);
+      const i = c.findIndex((l) => l.producto_id === p.id && (l.opcion_id || null) === (opcion?.id || null) && !l.observaciones && !l.descuento);
       if (i >= 0) return c.map((l, j) => (j === i ? { ...l, cantidad: l.cantidad + 1 } : l));
-      return [...c, { producto_id: p.id, nombre: p.nombre, precio: Number(p.precioSede), cantidad: 1, observaciones: '', descuento: 0, imp: p.impuestos?.activo ? p.impuestos : null }];
+      return [...c, { producto_id: p.id, opcion_id: opcion?.id || null, nombre, precio, cantidad: 1, observaciones: '', descuento: 0, imp: p.impuestos?.activo ? p.impuestos : null }];
     });
   };
+
+  /** Lector de código de barras (la pistola escribe el código y presiona Enter) */
+  async function leerCodigo(codigo) {
+    const c = String(codigo || '').trim();
+    if (!c) return;
+    const local = (productos || []).flatMap((p) => [
+      p.codigo_barras === c && { p, o: null },
+      ...(p.opciones || []).filter((o) => o.codigo_barras === c).map((o) => ({ p, o })),
+    ]).find(Boolean);
+    if (local) { agregar(local.p, local.o, !local.o && local.p.opciones?.some((o) => o.tipo === 'variante')); setBuscar(''); return; }
+    try {
+      const r = await rpc('buscar_codigo_barras', { p_codigo: c, p_sede: sedeId });
+      const p = r && (productos || []).find((x) => x.id === r.producto_id);
+      if (p) { agregar(p, p.opciones?.find((o) => o.id === r.opcion_id) || null, !!r.requiere_opcion); setBuscar(''); return; }
+      if (visibles.length === 1) { agregar(visibles[0]); setBuscar(''); return; }
+      aviso.error(`No se encontró ningún producto con el código ${c}.`);
+    } catch (e) { aviso.error(e); }
+  }
+  // Captura la pistola aunque el cursor no esté en el buscador
+  useEffect(() => {
+    let buffer = ''; let ultimo = 0;
+    const f = (e) => {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const ahora = Date.now();
+      if (ahora - ultimo > 80) buffer = '';
+      ultimo = ahora;
+      if (e.key === 'Enter') { if (buffer.length >= 4) { e.preventDefault(); leerCodigo(buffer); } buffer = ''; return; }
+      if (e.key.length === 1) buffer += e.key;
+    };
+    window.addEventListener('keydown', f);
+    return () => window.removeEventListener('keydown', f);
+  });
+
+  async function verCuentas() {
+    try {
+      setCuentas(await q((sb) => sb.from('pedidos').select('id,numero,nombre_cuenta,total,pagado,creado_en,tipo_servicio,mesas(nombre)').eq('sede_id', sedeId)
+        .neq('estado', 'cancelado').in('estado_pago', ['abierto', 'parcial']).order('creado_en')));
+    } catch (e) { aviso.error(e); }
+  }
   const cambiarLinea = (i, cambios) => setCarrito((c) => c.map((l, j) => (j === i ? { ...l, ...cambios } : l)));
   const quitarLinea = (i) => setCarrito((c) => c.filter((_, j) => j !== i));
 
@@ -109,7 +162,7 @@ function POS() {
   const totalEstimado = (pedido ? Number(pedido.total) : 0) + totalCarrito + valorDom;
 
   function limpiar() {
-    setCarrito([]); setPedido(null); setItemsPedido([]); setCliente(null); setObservaciones(''); setMesaId(''); setTipo('mostrador');
+    setCarrito([]); setPedido(null); setItemsPedido([]); setCliente(null); setObservaciones(''); setMesaId(''); setTipo('mostrador'); setNombreCuenta('');
     setDomicilio({ cliente_nombre: '', telefono: '', direccion: '', barrio: '', referencias: '', valor_domicilio: '' });
     if (pedidoParam || mesaParam) router.replace('/pos');
   }
@@ -122,9 +175,11 @@ function POS() {
       if (carrito.length === 0) throw new Error('Agrega productos al pedido.');
       if (tipo === 'mesa' && !mesaId) throw new Error('Selecciona la mesa.');
       if (tipo === 'domicilio' && !domicilio.direccion.trim()) throw new Error('Escribe la dirección del domicilio.');
+      if (tipo === 'cuenta' && !nombreCuenta.trim() && !cliente) throw new Error('Escribe a nombre de quién es la cuenta.');
       id = await rpc('crear_pedido', {
         p_sede: sedeId, p_tipo: tipo, p_mesa: tipo === 'mesa' ? mesaId : null, p_cliente: cliente?.id || null,
         p_observaciones: observaciones || null,
+        p_nombre_cuenta: tipo === 'cuenta' ? (nombreCuenta.trim() || null) : null,
         p_domicilio: tipo === 'domicilio' ? { ...domicilio, cliente_nombre: domicilio.cliente_nombre || cliente?.nombre || '', telefono: domicilio.telefono || cliente?.telefono || '', valor_domicilio: Number(domicilio.valor_domicilio || 0) } : null,
       });
     }
@@ -132,7 +187,7 @@ function POS() {
       await rpc('agregar_items', {
         p_pedido: id,
         p_items: carrito.map((l) => (l.producto_id
-          ? { producto_id: l.producto_id, cantidad: l.cantidad, observaciones: l.observaciones || null, descuento: Number(l.descuento || 0) }
+          ? { producto_id: l.producto_id, opcion_id: l.opcion_id || null, cantidad: l.cantidad, observaciones: l.observaciones || null, descuento: Number(l.descuento || 0) }
           : { nombre: l.nombre, precio: l.precio, cantidad: l.cantidad, observaciones: l.observaciones || null, va_a_cocina: l.va_a_cocina })),
       });
     }
@@ -182,8 +237,11 @@ function POS() {
         <div className="mb-3 flex flex-wrap gap-2">
           <div className="relative min-w-[200px] flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-cafe-300" />
-            <input className="input pl-9 text-base" placeholder="Buscar producto o código…" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
+            <input ref={buscarRef} className="input pl-9 pr-10 text-base" placeholder="Buscar o escanear código de barras…" value={buscar} onChange={(e) => setBuscar(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); leerCodigo(buscar); } }} />
+            <ScanBarcode size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-vino-400" title="Compatible con lector de código de barras" />
           </div>
+          {usaModulo('cuentas') && <button className="btn-secundario" onClick={verCuentas}><Users size={16} /> {negocio?.tipo === 'ropa' ? 'Apartados' : 'Cuentas abiertas'}</button>}
           {puede('pos.producto_personalizado') && (
             <button className="btn-secundario" onClick={() => setPersonal({ nombre: '', precio: '', cantidad: 1, va_a_cocina: false })}><PackagePlus size={16} /> Personalizado</button>
           )}
@@ -207,7 +265,7 @@ function POS() {
                 <span className="text-sm font-semibold leading-tight text-cafe-800">{p.nombre}</span>
                 <span className="mt-2 flex items-center justify-between">
                   <span className="font-titulo text-base font-bold text-vino-700">{moneda(p.precioSede)}</span>
-                  {p.agotado ? <Chip color="rojo">Agotado</Chip> : !p.disponible ? <Chip>No disponible</Chip> : p.es_demo ? <Chip color="amarillo">DEMO</Chip> : null}
+                  {p.agotado ? <Chip color="rojo">Agotado</Chip> : !p.disponible ? <Chip>No disponible</Chip> : p.opciones?.length ? <Chip color="vino">{p.opciones.some((o) => o.tipo === 'variante') ? `${p.opciones.length} tallas/colores` : `+${p.opciones.length} present.`}</Chip> : p.es_demo ? <Chip color="amarillo">DEMO</Chip> : null}
                 </span>
               </button>
             );
@@ -224,14 +282,17 @@ function POS() {
             {(pedido || carrito.length > 0) && <button className="btn-fantasma btn-sm" onClick={limpiar}><X size={14} /> Limpiar</button>}
           </div>
           {pedido ? (
-            <p className="text-xs text-cafe-400">{etiqueta(pedido.tipo_servicio)}{pedido.mesa_id ? ` · ${mesas.find((m) => m.id === pedido.mesa_id)?.nombre || ''}` : ''} · {etiqueta(pedido.estado)} · {etiqueta(pedido.estado_pago)}</p>
+            <p className="text-xs text-cafe-400">{nombreTipo(pedido.tipo_servicio)}{pedido.nombre_cuenta ? ` · ${pedido.nombre_cuenta}` : ''}{pedido.mesa_id ? ` · ${mesas.find((m) => m.id === pedido.mesa_id)?.nombre || ''}` : ''} · {etiqueta(pedido.estado)} · {etiqueta(pedido.estado_pago)}</p>
           ) : (
             <>
-              <div className="mt-2 grid grid-cols-5 gap-1">
+              {TIPOS.length > 1 && <div className="mt-2 grid gap-1" style={{ gridTemplateColumns: `repeat(${TIPOS.length}, minmax(0, 1fr))` }}>
                 {TIPOS.map((t) => (
-                  <button key={t} onClick={() => setTipo(t)} className={`rounded-lg px-1 py-1.5 text-[11px] font-semibold ${tipo === t ? 'bg-vino-700 text-white' : 'bg-crema-100 text-cafe-600'}`}>{etiqueta(t)}</button>
+                  <button key={t} onClick={() => setTipo(t)} className={`rounded-lg px-1 py-1.5 text-[11px] font-semibold ${tipo === t ? 'bg-vino-700 text-white' : 'bg-crema-100 text-cafe-600'}`}>{nombreTipo(t)}</button>
                 ))}
-              </div>
+              </div>}
+              {tipo === 'cuenta' && (
+                <input className="input mt-2" placeholder={negocio?.tipo === 'ropa' ? 'Apartado a nombre de…' : 'Cuenta a nombre de… (ej.: Don Pedro, mesa de afuera)'} value={nombreCuenta} onChange={(e) => setNombreCuenta(e.target.value)} />
+              )}
               {tipo === 'mesa' && (
                 <select className="input mt-2" value={mesaId} onChange={(e) => setMesaId(e.target.value)}>
                   <option value="">Selecciona la mesa…</option>
@@ -348,6 +409,55 @@ function POS() {
             <input type="number" className="input" autoFocus value={carrito[nota.desc].descuento || ''} onChange={(e) => cambiarLinea(nota.desc, { descuento: Number(e.target.value) })} />
           </Campo>
         )}
+      </Modal>
+
+      {/* Elegir talla/color o presentación */}
+      <Modal abierto={!!elegir} onCerrar={() => setElegir(null)} titulo={elegir?.nombre || ''} ancho="max-w-xl">
+        {elegir && (() => {
+          const variantes = elegir.opciones.filter((o) => o.tipo === 'variante');
+          const presentaciones = elegir.opciones.filter((o) => o.tipo === 'presentacion');
+          const tallas = [...new Set(variantes.map((o) => o.talla))];
+          const colores = [...new Set(variantes.map((o) => o.color))];
+          const elegirOpcion = (o) => { agregar(elegir, o, false); setElegir(null); };
+          return variantes.length ? (
+            <div className="overflow-x-auto">
+              <p className="mb-2 text-sm text-cafe-500">Elige la talla y el color (o escanea la etiqueta de la prenda):</p>
+              <table className="w-full text-sm">
+                <thead><tr><th className="p-1 text-left text-xs text-cafe-400">Color \ Talla</th>{tallas.map((t) => <th key={t} className="p-1 text-xs font-bold">{t}</th>)}</tr></thead>
+                <tbody>{colores.map((c) => (
+                  <tr key={c}><td className="p-1 font-semibold">{c}</td>
+                    {tallas.map((t) => { const o = variantes.find((x) => x.talla === t && x.color === c); return (
+                      <td key={t} className="p-1 text-center">{o ? <button className="btn-secundario w-full py-3 hover:border-vino-400 hover:bg-vino-50" onClick={() => elegirOpcion(o)}>{t}</button> : '—'}</td>); })}
+                  </tr>))}</tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button className="btn-secundario flex-col py-4" onClick={() => { agregar(elegir, null, false); setElegir(null); }}>
+                <span className="text-base">Unidad</span><span className="font-titulo text-lg font-bold text-vino-700">{moneda(elegir.precioSede)}</span></button>
+              {presentaciones.map((o) => (
+                <button key={o.id} className="btn-secundario flex-col py-4" onClick={() => elegirOpcion(o)}>
+                  <span className="text-base">{o.nombre}</span>
+                  <span className="font-titulo text-lg font-bold text-vino-700">{moneda(o.precio ?? Number(elegir.precioSede) * Number(o.factor))}</span>
+                  <span className="text-xs text-cafe-400">{Number(o.factor)} unidades</span></button>
+              ))}
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Cuentas abiertas */}
+      <Modal abierto={!!cuentas} onCerrar={() => setCuentas(null)} titulo={negocio?.tipo === 'ropa' ? 'Apartados y cuentas abiertas' : 'Cuentas abiertas'}>
+        {cuentas && (cuentas.length === 0 ? <p className="py-6 text-center text-sm text-cafe-400">No hay cuentas abiertas.</p> : (
+          <div className="space-y-2">
+            {cuentas.map((c) => (
+              <button key={c.id} className="btn-secundario w-full justify-between py-3" onClick={() => { setCuentas(null); router.push(`/pos?pedido=${c.id}`); }}>
+                <span className="text-left"><b>#{c.numero}</b> · {c.nombre_cuenta || c.mesas?.nombre || nombreTipo(c.tipo_servicio)}</span>
+                <span>{moneda(Number(c.total) - Number(c.pagado))}</span>
+              </button>
+            ))}
+          </div>
+        ))}
       </Modal>
 
       {/* Producto personalizado */}

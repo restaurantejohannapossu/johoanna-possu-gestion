@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Pencil, Copy, Power, PackageX, ImagePlus, BookOpen } from 'lucide-react';
+import { Plus, Pencil, Copy, Power, PackageX, ImagePlus, BookOpen, Tags, Barcode, ScanBarcode } from 'lucide-react';
 import { useSesion, Requiere } from '@/components/sesion';
 import { Encabezado, Pestanas, Modal, Campo, TablaDatos, Chip, useAviso, useCarga } from '@/components/ui';
 import Crud from '@/components/Crud';
+import OpcionesProducto from '@/components/OpcionesProducto';
 import { q, rpc } from '@/lib/supabase';
 import { subirArchivo } from '@/lib/archivos';
 import { moneda, numero } from '@/lib/formato';
@@ -33,12 +34,14 @@ function Productos() {
 }
 
 function Menu() {
-  const { puede, sedes, sedeId } = useSesion();
+  const { puede, sedes, sedeId, usaModulo, negocio } = useSesion();
+  const [opciones, setOpciones] = useState(null);
+  const conOpciones = usaModulo('variantes') || usaModulo('presentaciones');
   const aviso = useAviso();
   const [cat, setCat] = useState('');
   const [verInactivos, setVerInactivos] = useState(false);
   const [edit, setEdit] = useState(null);
-  const [aux, setAux] = useState({ categorias: [], impuestos: [], insumos: [] });
+  const [aux, setAux] = useState({ categorias: [], impuestos: [], insumos: [], unidades: [], categoriasInsumo: [] });
   const verCostos = puede('productos.costos');
 
   useEffect(() => {
@@ -46,12 +49,14 @@ function Menu() {
       q((sb) => sb.from('categorias').select('id,nombre').eq('tipo', 'producto').order('orden')),
       q((sb) => sb.from('impuestos').select('id,nombre,porcentaje,activo').order('porcentaje')),
       q((sb) => sb.from('insumos').select('id,nombre,codigo,unidades(abreviatura)').eq('activo', true).order('nombre')),
-    ]).then(([categorias, impuestos, insumos]) => setAux({ categorias, impuestos, insumos })).catch(aviso.error);
+      q((sb) => sb.from('unidades').select('id,abreviatura')),
+      q((sb) => sb.from('categorias').select('id,nombre').eq('tipo', 'insumo').order('orden')),
+    ]).then(([categorias, impuestos, insumos, unidades, categoriasInsumo]) => setAux({ categorias, impuestos, insumos, unidades, categoriasInsumo })).catch(aviso.error);
   }, [aviso.error]);
 
   const { datos, cargando, recargar } = useCarga(async () => {
     const [p, costos] = await Promise.all([
-      q((sb) => sb.from('productos').select('*, categorias(nombre), producto_sedes(*), recetas(id,activa)').order('orden').order('nombre')),
+      q((sb) => sb.from('productos').select('*, categorias(nombre), producto_sedes(*), recetas(id,activa), producto_opciones(id,tipo,activo,codigo_barras)').order('orden').order('nombre')),
       verCostos ? rpc('costos_productos') : Promise.resolve([]),
     ]);
     const mapa = Object.fromEntries(costos.map((c) => [c.producto_id, Number(c.costo)]));
@@ -62,9 +67,12 @@ function Menu() {
   const filas = useMemo(() => (datos || []).filter((p) => (verInactivos || p.activo) && (!cat || p.categoria_id === cat)), [datos, cat, verInactivos]);
 
   function abrir(p) {
-    if (!p) return setEdit({ ...VACIO, sedesConfig: sedes.map((s) => ({ sede_id: s.id, disponible: true, precio: '', hora_desde: '', hora_hasta: '', dias: null })) });
+    const base = negocio?.tipo === 'restaurante' ? VACIO
+      : { ...VACIO, tipo: 'reventa', control_inventario: 'directo', va_a_cocina: false, crearInsumo: true, conVariantes: usaModulo('variantes'), conPresentaciones: false };
+    if (!p) return setEdit({ ...base, sedesConfig: sedes.map((s) => ({ sede_id: s.id, disponible: true, precio: '', hora_desde: '', hora_hasta: '', dias: null })) });
     setEdit({
-      ...VACIO, ...Object.fromEntries(Object.keys(VACIO).map((k) => [k, p[k] ?? VACIO[k]])), id: p.id,
+      ...VACIO, ...Object.fromEntries(Object.keys(VACIO).map((k) => [k, p[k] ?? VACIO[k]])), id: p.id, codigo_barras: p.codigo_barras || '',
+      conVariantes: p.producto_opciones?.some((o) => o.tipo === 'variante'),
       sedesConfig: sedes.map((s) => {
         const c = p.producto_sedes.find((x) => x.sede_id === s.id);
         return { sede_id: s.id, existe: !!c, disponible: c ? c.disponible : true, agotado: c?.agotado || false, precio: c?.precio ?? '', hora_desde: c?.hora_desde?.slice(0, 5) || '', hora_hasta: c?.hora_hasta?.slice(0, 5) || '', dias: c?.dias || null };
@@ -75,11 +83,22 @@ function Menu() {
   async function guardar() {
     const e = edit;
     if (!e.codigo.trim() || !e.nombre.trim() || e.precio === '') return aviso.error('Código, nombre y precio son obligatorios.');
-    if (e.control_inventario === 'directo' && !e.insumo_id) return aviso.error('Selecciona el producto de inventario que se descuenta.');
+    const porVariantes = e.conVariantes && usaModulo('variantes');
+    if (e.control_inventario === 'directo' && !e.insumo_id && !e.crearInsumo && !porVariantes) return aviso.error('Selecciona el producto de inventario que se descuenta o marca "crear su inventario".');
+    let insumoId = e.insumo_id || null;
+    try {
+      if (e.control_inventario === 'directo' && !insumoId && !porVariantes && e.crearInsumo) {
+        const und = aux.unidades.find((u) => u.abreviatura === 'und');
+        const ins = await q((sb) => sb.from('insumos').insert({ codigo: e.codigo.trim().toUpperCase(), nombre: e.nombre.trim(), unidad_id: und.id, costo_unitario: Number(e.costo_estimado || 0),
+          categoria_id: aux.categoriasInsumo[0]?.id || null }).select().single());
+        insumoId = ins.id;
+      }
+    } catch (err) { return aviso.error(err); }
     const fila = {
       codigo: e.codigo.trim().toUpperCase(), nombre: e.nombre.trim(), categoria_id: e.categoria_id || null, descripcion: e.descripcion || null,
       imagen_url: e.imagen_url || null, precio: Number(e.precio), costo_estimado: Number(e.costo_estimado || 0), impuesto_id: e.impuesto_id || null,
-      unidad_venta: e.unidad_venta || 'und', tipo: e.tipo, control_inventario: e.control_inventario, insumo_id: e.control_inventario === 'directo' ? e.insumo_id : null,
+      unidad_venta: e.unidad_venta || 'und', tipo: e.tipo, control_inventario: porVariantes ? 'directo' : e.control_inventario,
+      insumo_id: e.control_inventario === 'directo' && !porVariantes ? insumoId : null, codigo_barras: (e.codigo_barras || '').trim() || null,
       cantidad_insumo: Number(e.cantidad_insumo || 1), va_a_cocina: e.va_a_cocina, orden: Number(e.orden || 0), activo: e.activo,
     };
     try {
@@ -92,12 +111,14 @@ function Menu() {
         else if (personalizado) await q((sb) => sb.from('producto_sedes').insert(conf));
       }
       setEdit(null); recargar(); aviso.ok('Producto guardado.');
+      if (!e.id && (porVariantes || e.conPresentaciones)) setOpciones({ ...p, opciones: [] });
     } catch (err) { aviso.error(err); }
   }
+  async function generarCodigo() { try { setEdit({ ...edit, codigo_barras: await rpc('generar_codigo_barras') }); } catch (e) { aviso.error(e); } }
   async function duplicar(p) {
     try {
-      const { id, categorias, producto_sedes, recetas, costo, margen, agotadoAqui, tieneReceta, creado_en, ...resto } = p;
-      await q((sb) => sb.from('productos').insert({ ...resto, codigo: `${p.codigo}-C${Math.floor(Math.random() * 900 + 100)}`, nombre: `${p.nombre} (copia)`, es_demo: false }));
+      const { id, categorias, producto_sedes, recetas, producto_opciones, costo, margen, agotadoAqui, tieneReceta, creado_en, ...resto } = p;
+      await q((sb) => sb.from('productos').insert({ ...resto, codigo: `${p.codigo}-C${Math.floor(Math.random() * 900 + 100)}`, nombre: `${p.nombre} (copia)`, codigo_barras: null, es_demo: false }));
       recargar(); aviso.ok('Producto duplicado. Edita la copia.');
     } catch (e) { aviso.error(e); }
   }
@@ -134,6 +155,7 @@ function Menu() {
             <span>{f.nombre} {f.es_demo && <Chip color="amarillo">DEMO</Chip>} {!f.activo && <Chip>Inactivo</Chip>} {f.agotadoAqui && <Chip color="rojo">Agotado</Chip>}</span>
           </div>) },
         { clave: 'categoria', titulo: 'Categoría', render: (f) => f.categorias?.nombre, exportar: (f) => f.categorias?.nombre },
+        { clave: 'codigo_barras', titulo: 'Código de barras', className: 'font-mono text-xs', render: (f) => f.codigo_barras || (f.producto_opciones?.length ? <Chip color="vino">{f.producto_opciones.length} {f.producto_opciones.some((o) => o.tipo === 'variante') ? 'tallas/colores' : 'presentaciones'}</Chip> : '—'), exportar: (f) => f.codigo_barras, valorBusqueda: (f) => [f.codigo_barras, ...(f.producto_opciones || []).map((o) => o.codigo_barras)].join(' ') },
         { clave: 'control_inventario', titulo: 'Inventario', render: (f) => f.control_inventario === 'receta' ? (f.tieneReceta ? 'Por receta' : <span className="text-red-700">Receta pendiente</span>) : f.control_inventario === 'directo' ? 'Directo' : 'No descuenta',
           exportar: (f) => f.control_inventario },
         { clave: 'precio', titulo: 'Precio', tipo: 'moneda' },
@@ -142,7 +164,9 @@ function Menu() {
         <div className="flex justify-end gap-1">
           {puede('productos.agotar', 'productos.gestionar') && <button className={`btn-sm btn ${f.agotadoAqui ? 'bg-red-100 text-red-700' : 'btn-secundario'}`} onClick={() => alternarAgotado(f)} title="Agotado en esta sede"><PackageX size={13} /></button>}
           {puede('productos.gestionar') && <>
-            {f.control_inventario === 'receta' && <Link href={`/recetas?producto=${f.id}`} className="btn-secundario btn-sm" title="Receta"><BookOpen size={13} /></Link>}
+            {f.control_inventario === 'receta' && usaModulo('recetas') && <Link href={`/recetas?producto=${f.id}`} className="btn-secundario btn-sm" title="Receta"><BookOpen size={13} /></Link>}
+            {conOpciones && <button className="btn-secundario btn-sm" onClick={() => setOpciones(f)} title={usaModulo('variantes') ? 'Tallas y colores' : 'Presentaciones'}><Tags size={13} /></button>}
+            {(f.codigo_barras || f.producto_opciones?.some((o) => o.codigo_barras)) && <Link href={`/imprimir/etiquetas?producto=${f.id}`} target="_blank" className="btn-secundario btn-sm" title="Imprimir etiquetas"><Barcode size={13} /></Link>}
             <button className="btn-secundario btn-sm" onClick={() => abrir(f)} title="Editar"><Pencil size={13} /></button>
             <button className="btn-secundario btn-sm" onClick={() => duplicar(f)} title="Duplicar"><Copy size={13} /></button>
             <button className="btn-secundario btn-sm" onClick={() => alternarActivo(f)} title={f.activo ? 'Desactivar' : 'Activar'}><Power size={13} /></button>
@@ -156,6 +180,10 @@ function Menu() {
           <div className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-3">
               <Campo etiqueta="Código interno *"><input className="input uppercase" {...S('codigo')} /></Campo>
+              <Campo etiqueta="Código de barras" ayuda="Escanéalo con la pistola o genera uno" className="sm:col-span-2">
+                <div className="flex gap-2"><div className="relative flex-1"><ScanBarcode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-cafe-300" />
+                  <input className="input pl-9 font-mono" placeholder="Pasa el lector sobre el código" {...S('codigo_barras')} onKeyDown={(ev) => ev.key === 'Enter' && ev.preventDefault()} /></div>
+                  <button type="button" className="btn-secundario" onClick={generarCodigo}><Barcode size={15} /> Generar</button></div></Campo>
               <Campo etiqueta="Nombre *" className="sm:col-span-2"><input className="input" {...S('nombre')} /></Campo>
               <Campo etiqueta="Categoría"><select className="input" {...S('categoria_id')}><option value="">—</option>{aux.categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></Campo>
               <Campo etiqueta="Precio de venta *" ayuda={!puede('productos.precios') && edit.id ? 'No tienes permiso para cambiar precios.' : null}>
@@ -168,14 +196,17 @@ function Menu() {
             </div>
             <div className="rounded-xl border border-crema-200 p-3">
               <p className="etiqueta">Control de inventario al vender</p>
+              {usaModulo('variantes') && <label className="mb-3 flex items-center gap-2 rounded-lg bg-vino-50 px-3 py-2 text-sm"><input type="checkbox" checked={!!edit.conVariantes} onChange={(e) => setEdit({ ...edit, conVariantes: e.target.checked })} /> <b>Tiene tallas y colores</b> (cada combinación lleva su propio inventario y código)</label>}
+              {usaModulo('presentaciones') && !edit.id && <label className="mb-3 flex items-center gap-2 rounded-lg bg-vino-50 px-3 py-2 text-sm"><input type="checkbox" checked={!!edit.conPresentaciones} onChange={(e) => setEdit({ ...edit, conPresentaciones: e.target.checked })} /> <b>Se vende también por paca, canasta u otra presentación</b></label>}
+              {!(edit.conVariantes && usaModulo('variantes')) && <>
               <div className="grid gap-3 sm:grid-cols-3">
                 <select className="input" {...S('control_inventario')}>
-                  <option value="receta">Descontar ingredientes según receta</option>
+                  {usaModulo('recetas') && <option value="receta">Descontar ingredientes según receta</option>}
                   <option value="directo">Descontar un producto de inventario</option>
                   <option value="ninguno">No descontar inventario</option>
                 </select>
                 {edit.control_inventario === 'directo' && <>
-                  <select className="input" {...S('insumo_id')}><option value="">Producto de inventario…</option>{aux.insumos.map((i) => <option key={i.id} value={i.id}>{i.nombre} ({i.unidades?.abreviatura})</option>)}</select>
+                  <select className="input" {...S('insumo_id')}><option value="">{edit.crearInsumo ? '➕ Crear su inventario automáticamente' : 'Producto de inventario…'}</option>{aux.insumos.map((i) => <option key={i.id} value={i.id}>{i.nombre} ({i.unidades?.abreviatura})</option>)}</select>
                   <input type="number" step="any" className="input" placeholder="Cantidad por unidad vendida" {...S('cantidad_insumo')} />
                 </>}
                 {edit.control_inventario !== 'directo' && (
@@ -183,7 +214,12 @@ function Menu() {
                     <input type="number" className="input" {...S('costo_estimado')} /></Campo>
                 )}
               </div>
-              <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={edit.va_a_cocina} onChange={(e) => setEdit({ ...edit, va_a_cocina: e.target.checked })} /> Se envía a cocina (aparece en comandas)</label>
+              </>}
+              {(edit.control_inventario === 'directo' && !edit.insumo_id) || (edit.conVariantes && usaModulo('variantes')) ? (
+                <Campo etiqueta="Costo de compra por unidad" ayuda="Para calcular la ganancia. Luego se actualiza solo con cada compra." className="mt-3 max-w-xs">
+                  <input type="number" className="input" {...S('costo_estimado')} /></Campo>
+              ) : null}
+              {usaModulo('cocina') && <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={edit.va_a_cocina} onChange={(e) => setEdit({ ...edit, va_a_cocina: e.target.checked })} /> Se envía a cocina (aparece en comandas)</label>}
             </div>
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -221,6 +257,7 @@ function Menu() {
           </div>
         )}
       </Modal>
+      {opciones && <OpcionesProducto producto={opciones} onCerrar={() => { setOpciones(null); recargar(); }} />}
     </>
   );
 }

@@ -25,7 +25,7 @@ function Globo({ active, payload, label, formato = moneda, etiquetaX }) {
   );
 }
 
-export function GraficoSerie({ datos, x = 'dia', series, alto = 260, etiquetaX }) {
+export function GraficoSerie({ datos, x = "dia", series, alto = 260, etiquetaX }) {
   return (
     <ResponsiveContainer width="100%" height={alto}>
       <ComposedChart data={datos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -40,7 +40,7 @@ export function GraficoSerie({ datos, x = 'dia', series, alto = 260, etiquetaX }
         <Tooltip content={<Globo etiquetaX={etiquetaX} />} cursor={{ stroke: '#c98f17', strokeWidth: 1 }} />
         <Legend wrapperStyle={{ fontSize: 12, color: '#5f4838' }} iconType="plainline" />
         {series.map((s, i) => s.tipo === 'linea'
-          ? <Line key={s.clave} dataKey={s.clave} name={s.nombre} stroke={s.color || NEUTRO} strokeWidth={2} strokeDasharray="5 4" dot={false} activeDot={{ r: 4 }} />
+          ? <Line key={s.clave} dataKey={s.clave} name={s.nombre} stroke={s.color || NEUTRO} strokeWidth={2} strokeDasharray={s.solida ? undefined : "5 4"} dot={false} activeDot={{ r: 4 }} />
           : <Area key={s.clave} dataKey={s.clave} name={s.nombre} stroke={s.color || PALETA[i]} strokeWidth={2} fill="url(#gradVino)" activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />)}
       </ComposedChart>
     </ResponsiveContainer>

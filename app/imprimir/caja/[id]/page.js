@@ -12,9 +12,8 @@ export default function CierreCaja() {
   const [error, setError] = useState('');
   useEffect(() => {
     Promise.all([
-      q((sb) => sb.from('caja_sesiones').select('*, cajas(nombre), sedes(nombre), perfiles!caja_sesiones_usuario_id_fkey(nombre)').eq('id', id).single()),
-      q((sb) => sb.from('config_empresa').select('nombre, direccion').eq('id', 1).single()),
-    ]).then(([s, emp]) => { setD({ s, emp }); setTimeout(() => window.print(), 400); }).catch((e) => setError(mensajeError(e)));
+      q((sb) => sb.from('caja_sesiones').select('*, cajas(nombre), sedes(nombre, negocios(nombre, direccion)), perfiles!caja_sesiones_usuario_id_fkey(nombre)').eq('id', id).single()),
+    ]).then(([s]) => { setD({ s, emp: s.sedes?.negocios || {} }); setTimeout(() => window.print(), 400); }).catch((e) => setError(mensajeError(e)));
   }, [id]);
   if (error) return <p className="p-6 text-red-700">{error}</p>;
   if (!d) return <p className="p-6">Cargando…</p>;

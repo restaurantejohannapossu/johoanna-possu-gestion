@@ -41,13 +41,13 @@ function Pedidos() {
         </select>
         <select className="input w-auto" value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="">Todos los servicios</option>
-          {['mesa', 'mostrador', 'llevar', 'recoger', 'domicilio'].map((x) => <option key={x} value={x}>{etiqueta(x)}</option>)}
+          {['mesa', 'mostrador', 'llevar', 'recoger', 'cuenta', 'domicilio'].map((x) => <option key={x} value={x}>{etiqueta(x)}</option>)}
         </select>
       </div>
       <TablaDatos cargando={cargando} filas={datos || []} exportar="Pedidos" subtitulo={`${desde} a ${hasta}`} onFila={(f) => setAbierto(f.id)} columnas={[
         { clave: 'numero', titulo: 'N.º' },
         { clave: 'creado_en', titulo: 'Fecha', tipo: 'fechahora' },
-        { clave: 'tipo_servicio', titulo: 'Servicio', render: (f) => `${etiqueta(f.tipo_servicio)}${f.mesas?.nombre ? ' · ' + f.mesas.nombre : ''}`, exportar: (f) => `${etiqueta(f.tipo_servicio)}${f.mesas?.nombre ? ' · ' + f.mesas.nombre : ''}` },
+        { clave: 'tipo_servicio', titulo: 'Servicio', render: (f) => `${etiqueta(f.tipo_servicio)}${f.mesas?.nombre ? ' · ' + f.mesas.nombre : ''}${f.nombre_cuenta ? ' · ' + f.nombre_cuenta : ''}`, exportar: (f) => `${etiqueta(f.tipo_servicio)}${f.mesas?.nombre ? ' · ' + f.mesas.nombre : ''}${f.nombre_cuenta ? ' · ' + f.nombre_cuenta : ''}`, valorBusqueda: (f) => `${f.nombre_cuenta || ''} ${f.mesas?.nombre || ''}` },
         { clave: 'cliente', titulo: 'Cliente', render: (f) => f.clientes?.nombre || 'General', exportar: (f) => f.clientes?.nombre || 'General', valorBusqueda: (f) => f.clientes?.nombre },
         { clave: 'usuario', titulo: 'Usuario', render: (f) => f.perfiles?.nombre, exportar: (f) => f.perfiles?.nombre },
         { clave: 'estado', titulo: 'Estado', tipo: 'estado' },

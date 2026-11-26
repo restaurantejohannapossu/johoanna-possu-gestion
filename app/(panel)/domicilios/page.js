@@ -14,7 +14,7 @@ export default function Pagina() { return <Requiere permisos={['domicilios.ver']
 const ESTADOS = ['recibido', 'en_preparacion', 'listo', 'en_camino', 'entregado', 'cancelado'];
 
 function Domicilios() {
-  const { sedeId, puede } = useSesion();
+  const { sedeId, puede, negocio } = useSesion();
   const aviso = useAviso();
   const [fecha, setFecha] = useState(hoyISO());
   const [estado, setEstado] = useState('activos');
@@ -68,7 +68,7 @@ function Domicilios() {
                     {d.estado === 'en_camino' && <button className="btn-primario btn-sm" onClick={() => cambiar(p, 'entregado')}>Entregado</button>}
                     {d.estado === 'recibido' && <button className="btn-secundario btn-sm" onClick={() => cambiar(p, 'en_preparacion')}>En preparación</button>}
                     {d.estado === 'en_preparacion' && <button className="btn-secundario btn-sm" onClick={() => cambiar(p, 'listo')}>Listo</button>}
-                    {d.telefono && <button className="btn-secundario btn-sm" onClick={() => abrirWhatsApp(d.telefono, `Hola ${d.cliente_nombre || ''}, tu pedido #${p.numero} de Restaurante Johoanna Possu ${d.estado === 'en_camino' ? 'va en camino' : 'está en preparación'}. Total: ${moneda(p.total)}.`)}><MessageCircle size={13} /></button>}
+                    {d.telefono && <button className="btn-secundario btn-sm" onClick={() => abrirWhatsApp(d.telefono, `Hola ${d.cliente_nombre || ''}, tu pedido #${p.numero} de ${negocio?.nombre || ''} ${d.estado === 'en_camino' ? 'va en camino' : 'está en preparación'}. Total: ${moneda(p.total)}.`)}><MessageCircle size={13} /></button>}
                   </div>
                 )}
               </div>

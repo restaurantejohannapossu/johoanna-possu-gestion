@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowUpDown, History, ClipboardCheck, Plus, Settings2, CheckCheck, Ban } from 'lucide-react';
+import { ArrowUpDown, History, ClipboardCheck, Plus, Settings2, CheckCheck, Ban, ScanBarcode } from 'lucide-react';
 import { useSesion, Requiere } from '@/components/sesion';
 import { Encabezado, Pestanas, Campo, Modal, TablaDatos, Chip, Kpi, Cargando, Alerta, useAviso, useConfirmar, useCarga } from '@/components/ui';
 import Crud from '@/components/Crud';
@@ -58,6 +58,19 @@ function Existencias() {
     });
   }, [sedeId]);
   const filas = (datos || []).filter((x) => !filtro || x.estado === filtro);
+  const [escaneo, setEscaneo] = useState('');
+  async function escanear() {
+    const c = escaneo.trim(); setEscaneo('');
+    if (!c) return;
+    try {
+      const r = await rpc('buscar_codigo_barras', { p_codigo: c, p_sede: sedeId });
+      const i = r?.insumo_id && (datos || []).find((x) => x.id === r.insumo_id);
+      if (!i) return aviso.error(r ? `"${r.nombre}" no tiene inventario propio.` : `Código ${c} no encontrado.`);
+      const t = TIPOS_MOV.find((x) => puede(x.permiso));
+      if (!t) return aviso.error('No tienes permiso para registrar movimientos.');
+      setMov({ insumo: i, tipo: t.id, cantidad: r.cantidad_insumo || 1, costo: '', motivo: '', obs: '' });
+    } catch (e) { aviso.error(e); }
+  }
   const valor = (datos || []).reduce((s, x) => s + x.valor, 0);
   const tipoSel = TIPOS_MOV.find((t) => t.id === mov?.tipo);
 
@@ -87,7 +100,12 @@ function Existencias() {
         <Kpi titulo="Bajo el mínimo" valor={(datos || []).filter((x) => x.estado === 'bajo').length} tono="dorado" />
         <Kpi titulo="Agotados" valor={(datos || []).filter((x) => x.estado === 'agotado').length} tono="rojo" />
       </div>
-      <div className="mb-3 flex gap-2">
+      <div className="mb-3 flex flex-wrap gap-2">
+        <div className="relative min-w-[260px] flex-1 sm:flex-none">
+          <ScanBarcode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-vino-400" />
+          <input className="input pl-9" placeholder="Escanear para registrar entrada o salida" value={escaneo} onChange={(e) => setEscaneo(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); escanear(); } }} />
+        </div>
         <select className="input w-auto" value={filtro} onChange={(e) => setFiltro(e.target.value)}>
           <option value="">Todos</option><option value="bajo">Bajo el mínimo</option><option value="agotado">Agotados</option><option value="ok">Con existencia suficiente</option>
         </select>

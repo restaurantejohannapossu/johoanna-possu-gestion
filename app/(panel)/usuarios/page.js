@@ -39,7 +39,7 @@ function ListaUsuarios() {
   const [actividad, setActividad] = useState(null);
   useEffect(() => {
     q((sb) => sb.from('roles').select('*').order('nombre')).then(setRoles);
-    q((sb) => sb.from('sedes').select('id,nombre').eq('activa', true).order('nombre')).then(setSedes);
+    q((sb) => sb.from('sedes').select('id,nombre,negocios(nombre)').eq('activa', true).order('nombre')).then((l) => setSedes(l.map((s) => ({ ...s, nombre: `${s.negocios?.nombre || ''} · ${s.nombre}` }))));
   }, []);
   const { datos, cargando, recargar } = useCarga(() => q((sb) => sb.from('perfiles').select('*, roles(nombre), usuario_sedes(sede_id)').order('nombre')), []);
   const nombreSede = (id) => sedes.find((s) => s.id === id)?.nombre || '';

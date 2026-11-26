@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Tienda Johoanna">
+  <defs>
+    <linearGradient id="cerveza" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5c655"/><stop offset="1" stop-color="#e08d13"/>
+    </linearGradient>
+    <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f5185"/><stop offset="1" stop-color="#1a2a43"/>
+    </linearGradient>
+  </defs>
+  <circle cx="200" cy="200" r="192" fill="url(#fondo)"/>
+  <circle cx="200" cy="200" r="184" fill="none" stroke="#f2ae2b" stroke-width="7"/>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#bccfe6" stroke-width="1.5" stroke-dasharray="3 7"/>
+  <!-- copos de frío -->
+  <g stroke="#bccfe6" stroke-width="3" stroke-linecap="round" opacity=".9">
+    <path d="M102 110v26M89 123h26M93 114l18 18M111 114l-18 18"/>
+    <path d="M300 96v20M290 106h20M293 99l14 14M307 99l-14 14"/>
+  </g>
+  <!-- jarra -->
+  <rect x="148" y="112" width="96" height="130" rx="14" fill="url(#cerveza)" stroke="#fdfdfb" stroke-width="6"/>
+  <path d="M244 140h18c14 0 22 10 22 24v20c0 14-8 24-22 24h-18" fill="none" stroke="#fdfdfb" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M168 132v92M196 132v92M224 132v92" stroke="#c26b0d" stroke-width="4" stroke-linecap="round" opacity=".55"/>
+  <g fill="#fdfdfb" opacity=".9"><circle cx="182" cy="200" r="4"/><circle cx="208" cy="176" r="3"/><circle cx="212" cy="214" r="5"/><circle cx="178" cy="160" r="3"/></g>
+  <!-- espuma -->
+  <path d="M140 118c-6-20 10-34 26-28 4-14 26-18 36-6 10-10 32-6 34 10 16 0 22 20 10 28-6 6-100 8-106-4z" fill="#fdfdfb"/>
+  <!-- texto -->
+  <text x="200" y="282" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="22" letter-spacing="9" fill="#f2ae2b" font-weight="700">TIENDA</text>
+  <text x="200" y="322" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="46" fill="#fdfdfb" font-weight="700">Johoanna</text>
+  <text x="200" y="346" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" letter-spacing="3" fill="#bccfe6">BIEN FRÍA, SIEMPRE</text>
+</svg>

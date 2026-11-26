@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, PackageCheck, Wallet, Ban, Paperclip, Eye, TrendingUp } from 'lucide-react';
+import { Plus, Trash2, PackageCheck, Wallet, Ban, Paperclip, Eye, TrendingUp, ScanBarcode } from 'lucide-react';
 import { useSesion, Requiere } from '@/components/sesion';
 import { Encabezado, Pestanas, Campo, Modal, TablaDatos, Estado, Kpi, Cargando, useAviso, useConfirmar, useCarga } from '@/components/ui';
 import { q, rpc } from '@/lib/supabase';
@@ -113,6 +113,20 @@ function FormCompra({ form, setForm, aux, sedeId, onListo }) {
   const { puede } = useSesion();
   const [enviando, setEnviando] = useState(false);
   const setI = (i, c) => setForm({ ...form, items: form.items.map((x, j) => (j === i ? { ...x, ...c } : x)) });
+  const [escaneo, setEscaneo] = useState('');
+  async function escanear() {
+    const c = escaneo.trim(); setEscaneo('');
+    if (!c) return;
+    try {
+      const r = await rpc('buscar_codigo_barras', { p_codigo: c, p_sede: sedeId });
+      if (!r?.insumo_id) return aviso.error(r ? `"${r.nombre}" no tiene inventario propio (por receta o tallas sin elegir).` : `Código ${c} no encontrado.`);
+      const ins = aux.insumos.find((x) => x.id === r.insumo_id);
+      const cant = Number(r.cantidad_insumo || 1);
+      const i = form.items.findIndex((l) => l.insumo_id === r.insumo_id);
+      if (i >= 0) setI(i, { cantidad: Number(form.items[i].cantidad || 0) + cant });
+      else setForm({ ...form, items: [...form.items, { insumo_id: r.insumo_id, cantidad: cant, unidad_id: ins?.unidad_id || '', costo_unitario: ins?.costo_unitario || '', descuento: '', impuesto_pct: '', vence: '' }] });
+    } catch (e) { aviso.error(e); }
+  }
   const linea = (l) => { const b = Number(l.cantidad || 0) * Number(l.costo_unitario || 0) - Number(l.descuento || 0); return b * (1 + Number(l.impuesto_pct || 0) / 100); };
   const total = form.items.reduce((s, l) => s + linea(l), 0);
   async function guardar(recibir, pagar) {
@@ -143,7 +157,12 @@ function FormCompra({ form, setForm, aux, sedeId, onListo }) {
         {form.forma_pago === 'credito' && <Campo etiqueta="Vence"><input type="date" className="input" value={form.vence} onChange={(e) => setForm({ ...form, vence: e.target.value })} /></Campo>}
         <Campo etiqueta="Observaciones" className="sm:col-span-2"><input className="input" value={form.observaciones || ''} onChange={(e) => setForm({ ...form, observaciones: e.target.value })} /></Campo>
       </div>
-      <div className="mt-4 overflow-x-auto rounded-xl border border-crema-200">
+      <div className="relative mt-4 max-w-md">
+        <ScanBarcode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-vino-400" />
+        <input className="input pl-9" placeholder="Escanea el producto para agregarlo (paca o canasta suma sus unidades)" value={escaneo}
+          onChange={(e) => setEscaneo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); escanear(); } }} />
+      </div>
+      <div className="mt-3 overflow-x-auto rounded-xl border border-crema-200">
         <table className="tabla">
           <thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Costo unit.</th><th>Desc. $</th><th>IVA %</th><th>Vence</th><th className="text-right">Total</th><th /></tr></thead>
           <tbody>{form.items.map((l, i) => {

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Variedades Johanna">
+  <defs>
+    <linearGradient id="vestido" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a24886"/><stop offset="1" stop-color="#58214a"/>
+    </linearGradient>
+    <linearGradient id="oro" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2cbbd"/><stop offset=".5" stop-color="#db8b72"/><stop offset="1" stop-color="#a85845"/>
+    </linearGradient>
+  </defs>
+  <circle cx="200" cy="200" r="192" fill="#fbf3f8"/>
+  <circle cx="200" cy="200" r="186" fill="none" stroke="url(#oro)" stroke-width="7"/>
+  <circle cx="200" cy="200" r="172" fill="none" stroke="#6e2a5a" stroke-width="1.5" stroke-dasharray="2 6"/>
+  <!-- gancho -->
+  <path d="M200 62c-12 0-20 8-20 18 0 8 6 13 13 15l7 3v10" fill="none" stroke="#6e2a5a" stroke-width="6" stroke-linecap="round"/>
+  <path d="M200 108 128 150c-6 4-3 12 4 12h136c7 0 10-8 4-12z" fill="none" stroke="#6e2a5a" stroke-width="6" stroke-linejoin="round"/>
+  <!-- vestido -->
+  <path d="M174 158c4 10 10 16 26 16s22-6 26-16l10 34c-6 6-12 10-16 12l26 58c-24 12-50 16-46 16s-22-4-46-16l26-58c-4-2-10-6-16-12z" fill="url(#vestido)"/>
+  <path d="M164 204c22 8 50 8 72 0" fill="none" stroke="url(#oro)" stroke-width="5" stroke-linecap="round"/>
+  <!-- destellos -->
+  <path d="M286 118l5 13 13 5-13 5-5 13-5-13-13-5 13-5z" fill="url(#oro)"/>
+  <path d="M112 196l3 8 8 3-8 3-3 8-3-8-8-3 8-3z" fill="url(#oro)"/>
+  <path d="M296 236l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#c06aa3"/>
+  <!-- texto -->
+  <text x="200" y="300" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="21" letter-spacing="7" fill="#a85845" font-weight="700">VARIEDADES</text>
+  <text x="200" y="342" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="46" fill="#6e2a5a" font-weight="700">Johanna</text>
+</svg>
